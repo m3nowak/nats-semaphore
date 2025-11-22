@@ -66,15 +66,26 @@ class NatsSemaphoreLock:
     _name: str
     _slot_no: int
     _semaphore: "NatsSemaphore"
+    _revision: int
 
-    def __init__(self, name: str, slot_no: int, semaphore: "NatsSemaphore"):
+    def __init__(self, name: str, slot_no: int, semaphore: "NatsSemaphore", revision: int):
         self._name = name
         self._slot_no = slot_no
         self._semaphore = semaphore
+        self._revision = revision
 
     async def release(self):
         kv = await self._semaphore._context._get_kv()
         await kv.delete(f"{self._name}-{self._slot_no}")
+
+    async def renew(self):
+        kv = await self._semaphore._context._get_kv()
+        try:
+            self._revision = await kv.update(f"{self._name}-{self._slot_no}", b"LOCKED", last=self._revision)
+        except KeyWrongLastSequenceError as e:
+            raise KeyWrongLastSequenceError(
+                f"Lock for slot '{self._name}-{self._slot_no}' was lost and cannot be renewed."
+            ) from e
 
 
 class NatsSemaphore:
@@ -133,12 +144,13 @@ class NatsSemaphore:
 
                     for candidate in candidates:
                         try:
-                            await kv.create(candidate, b"LOCKED")
+                            revision = await kv.create(candidate, b"LOCKED")
                             await watcher.stop()
                             return NatsSemaphoreLock(
                                 name=self._name,
                                 slot_no=int(candidate.split("-")[-1]),
                                 semaphore=self,
+                                revision=revision,
                             )
                         except KeyWrongLastSequenceError:
                             pass
