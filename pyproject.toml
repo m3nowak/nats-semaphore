@@ -5,7 +5,7 @@ description = "Distributed semaphore utility based on NATS JetStream key-value s
 authors = [
     {name = "Mikołaj Nowak", email = "12396461+m3nowak@users.noreply.github.com"},
 ]
-dependencies = ["nats-py<3,>=2.12", "async-timeout>=5.0.1"]
+dependencies = ["nats-py<3,>=2.12", "async-timeout>=5.0.1; python_version < '3.11'"]
 requires-python = ">=3.10"
 readme = "README.md"
 license = {text = "MIT"}
