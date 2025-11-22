@@ -1,3 +1,4 @@
+import os
 from typing import AsyncGenerator, Generator
 
 import pytest
@@ -13,8 +14,12 @@ load_dotenv()
 @pytest.fixture(scope="session")
 def nats_server() -> Generator[str, None, None]:
     """Starts a NATS server for testing."""
-    with NatsContainer("nats:latest").with_command("-js") as nats:
-        yield nats.nats_uri()
+    env_var = os.getenv("NATS_SERVER_URL")
+    if env_var:
+        yield env_var
+    else:
+        with NatsContainer("nats:latest").with_command("-js") as nats:
+            yield nats.nats_uri()
 
 
 @pytest_asyncio.fixture(scope="function")

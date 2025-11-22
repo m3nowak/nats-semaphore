@@ -8,7 +8,7 @@ authors = [
 dependencies = ["nats-py<3,>=2.12", "async-timeout>=5.0.1; python_version < '3.11'"]
 requires-python = ">=3.10"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 
 [build-system]
 requires = ["pdm-backend"]
@@ -41,6 +41,7 @@ format = "ruff format"
 lint-fix = "ruff check --fix"
 fix-all = {composite = ["lint-fix", "format"], keep_going = true}
 types = "pyright src tests"
+test = "pytest tests"
 
 [dependency-groups]
 dev = [
@@ -50,5 +51,10 @@ dev = [
     "pytest-asyncio>=1.3.0",
     "testcontainers[nats]>=4.13.3",
     "pytest-cov>=7.0.0",
+]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:::testcontainers.*",
 ]
 
