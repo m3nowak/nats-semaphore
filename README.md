@@ -12,9 +12,7 @@ A distributed semaphore implementation for Python using NATS JetStream KeyValue 
 
 ## Installation
 
-```bash
-pip install nats-semaphore
-```
+Coming soon(tm)!
 
 ## Usage
 
