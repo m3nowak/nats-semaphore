@@ -6,19 +6,19 @@ from nats.aio.client import Client as NATS
 
 @pytest.mark.asyncio
 async def test_basic_setup_0(nats_client: NATS):
-    from nats_semaphore import NatsSemaphoreDispatcher
+    from nats_semaphore import NatsSemaphoreContext
 
-    dispatcher = NatsSemaphoreDispatcher(nats_client, kv="TEST_KV_BUCKET")
+    context = NatsSemaphoreContext(nats_client, kv="TEST_KV_BUCKET")
     with pytest.raises(ValueError):
-        dispatcher.semaphore(name="test_semaphore", slot_count=0)
+        context.semaphore(name="test_semaphore", slot_count=0)
 
 
 @pytest.mark.asyncio
 async def test_basic_setup_1(nats_client: NATS):
-    from nats_semaphore import NatsSemaphoreDispatcher
+    from nats_semaphore import NatsSemaphoreContext
 
-    dispatcher = NatsSemaphoreDispatcher(nats_client, kv="TEST_KV_BUCKET")
-    semaphore = dispatcher.semaphore(name="test_semaphore", slot_count=1)
+    context = NatsSemaphoreContext(nats_client, kv="TEST_KV_BUCKET")
+    semaphore = context.semaphore(name="test_semaphore", slot_count=1)
 
     lock = await semaphore.acquire(timeout=5.0)
     assert lock is not None
@@ -29,10 +29,10 @@ async def test_basic_setup_1(nats_client: NATS):
 
 @pytest.mark.asyncio
 async def test_basic_setup_2(nats_client: NATS):
-    from nats_semaphore import NatsSemaphoreDispatcher
+    from nats_semaphore import NatsSemaphoreContext
 
-    dispatcher = NatsSemaphoreDispatcher(nats_client, kv="TEST_KV_BUCKET")
-    semaphore = dispatcher.semaphore(name="test_semaphore", slot_count=2)
+    context = NatsSemaphoreContext(nats_client, kv="TEST_KV_BUCKET")
+    semaphore = context.semaphore(name="test_semaphore", slot_count=2)
 
     lock1 = await semaphore.acquire(timeout=5.0)
     assert lock1 is not None
@@ -46,10 +46,10 @@ async def test_basic_setup_2(nats_client: NATS):
 
 @pytest.mark.asyncio
 async def test_acquire_release(nats_client: NATS):
-    from nats_semaphore import NatsSemaphoreDispatcher
+    from nats_semaphore import NatsSemaphoreContext
 
-    dispatcher = NatsSemaphoreDispatcher(nats_client, kv="TEST_KV_BUCKET")
-    semaphore = dispatcher.semaphore(name="test_semaphore", slot_count=1)
+    context = NatsSemaphoreContext(nats_client, kv="TEST_KV_BUCKET")
+    semaphore = context.semaphore(name="test_semaphore", slot_count=1)
 
     lock = await semaphore.acquire(timeout=5.0)
     assert lock is not None
@@ -62,10 +62,10 @@ async def test_acquire_release(nats_client: NATS):
 
 @pytest.mark.asyncio
 async def test_context_manager(nats_client: NATS):
-    from nats_semaphore import NatsSemaphoreDispatcher
+    from nats_semaphore import NatsSemaphoreContext
 
-    dispatcher = NatsSemaphoreDispatcher(nats_client, kv="TEST_KV_BUCKET")
-    semaphore = dispatcher.semaphore(name="test_semaphore", slot_count=1)
+    context = NatsSemaphoreContext(nats_client, kv="TEST_KV_BUCKET")
+    semaphore = context.semaphore(name="test_semaphore", slot_count=1)
 
     async with semaphore.lock(timeout=5.0) as lock:
         with pytest.raises(asyncio.TimeoutError):
@@ -77,15 +77,15 @@ async def test_context_manager(nats_client: NATS):
 async def test_lock_expiration(nats_client: NATS):
     from nats.js.api import KeyValueConfig
 
-    from nats_semaphore import NatsSemaphoreDispatcher
+    from nats_semaphore import NatsSemaphoreContext
 
     kvc = KeyValueConfig(
         bucket="TEST_KV_BUCKET",
         ttl=1,  # Set a TTL for the keys
     )
 
-    dispatcher = NatsSemaphoreDispatcher(nats_client, kv=kvc)
-    semaphore = dispatcher.semaphore(name="test_semaphore", slot_count=1)
+    context = NatsSemaphoreContext(nats_client, kv=kvc)
+    semaphore = context.semaphore(name="test_semaphore", slot_count=1)
 
     lock = await semaphore.acquire(timeout=5.0)
     assert lock is not None
@@ -102,12 +102,12 @@ async def test_lock_expiration(nats_client: NATS):
 
 @pytest.mark.asyncio
 async def test_multiple_semaphores(nats_client: NATS):
-    from nats_semaphore import NatsSemaphoreDispatcher
+    from nats_semaphore import NatsSemaphoreContext
 
-    dispatcher = NatsSemaphoreDispatcher(nats_client, kv="TEST_KV_BUCKET")
+    context = NatsSemaphoreContext(nats_client, kv="TEST_KV_BUCKET")
 
-    semaphore1 = dispatcher.semaphore(name="semaphore_1", slot_count=1)
-    semaphore2 = dispatcher.semaphore(name="semaphore_2", slot_count=1)
+    semaphore1 = context.semaphore(name="semaphore_1", slot_count=1)
+    semaphore2 = context.semaphore(name="semaphore_2", slot_count=1)
 
     lock1 = await semaphore1.acquire(timeout=5.0)
     assert lock1 is not None
@@ -121,10 +121,10 @@ async def test_multiple_semaphores(nats_client: NATS):
 
 @pytest.mark.asyncio
 async def test_semaphore_reuse(nats_client: NATS):
-    from nats_semaphore import NatsSemaphoreDispatcher
+    from nats_semaphore import NatsSemaphoreContext
 
-    dispatcher = NatsSemaphoreDispatcher(nats_client, kv="TEST_KV_BUCKET")
-    semaphore = dispatcher.semaphore(name="test_semaphore", slot_count=1)
+    context = NatsSemaphoreContext(nats_client, kv="TEST_KV_BUCKET")
+    semaphore = context.semaphore(name="test_semaphore", slot_count=1)
 
     for _ in range(3):
         lock = await semaphore.acquire(timeout=5.0)
@@ -134,10 +134,10 @@ async def test_semaphore_reuse(nats_client: NATS):
 
 @pytest.mark.asyncio
 async def test_acquire_timeout(nats_client: NATS):
-    from nats_semaphore import NatsSemaphoreDispatcher
+    from nats_semaphore import NatsSemaphoreContext
 
-    dispatcher = NatsSemaphoreDispatcher(nats_client, kv="TEST_KV_BUCKET")
-    semaphore = dispatcher.semaphore(name="test_semaphore", slot_count=1)
+    context = NatsSemaphoreContext(nats_client, kv="TEST_KV_BUCKET")
+    semaphore = context.semaphore(name="test_semaphore", slot_count=1)
 
     lock = await semaphore.acquire(timeout=5.0)
     assert lock is not None
@@ -150,10 +150,10 @@ async def test_acquire_timeout(nats_client: NATS):
 
 @pytest.mark.asyncio
 async def test_free_count(nats_client: NATS):
-    from nats_semaphore import NatsSemaphoreDispatcher
+    from nats_semaphore import NatsSemaphoreContext
 
-    dispatcher = NatsSemaphoreDispatcher(nats_client, kv="TEST_KV_BUCKET")
-    semaphore = dispatcher.semaphore(name="test_semaphore", slot_count=3)
+    context = NatsSemaphoreContext(nats_client, kv="TEST_KV_BUCKET")
+    semaphore = context.semaphore(name="test_semaphore", slot_count=3)
 
     free_count = await semaphore.current_free_count()
     assert free_count == 3

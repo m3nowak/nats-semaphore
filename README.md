@@ -23,21 +23,21 @@ Here is a simple example of how to use `nats-semaphore`:
 ```python
 import asyncio
 import nats
-from nats_semaphore import NatsSemaphoreDispatcher
+from nats_semaphore import NatsSemaphoreContext
 
 async def main():
     # 1. Connect to NATS
     nc = await nats.connect("nats://localhost:4222")
 
-    # 2. Initialize the dispatcher
+    # 2. Initialize the context
     # 'kv' is the name of the NATS KeyValue bucket to use for storing locks.
     # It will be created if it doesn't exist.
-    dispatcher = NatsSemaphoreDispatcher(nc, kv="SEMAPHORE_BUCKET")
+    semaphore_context = NatsSemaphoreContext(nc, kv="SEMAPHORE_BUCKET")
 
     # 3. Define a semaphore
     # 'name' identifies the resource.
     # 'slot_count' is the maximum number of concurrent locks allowed.
-    semaphore = dispatcher.semaphore(name="my-shared-resource", slot_count=3)
+    semaphore = semaphore_context.semaphore(name="my-shared-resource", slot_count=3)
 
     # 4. Acquire a lock using a context manager
     try:

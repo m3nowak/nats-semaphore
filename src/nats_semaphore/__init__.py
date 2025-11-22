@@ -21,7 +21,7 @@ _LOCK_TIMEOUT_DEFAULT = 60.0  # seconds
 _LOCK_TTL_DEFAULT = 60.0  # seconds
 
 
-class NatsSemaphoreDispatcher:
+class NatsSemaphoreContext:
     _js_ctx: JetStreamContext
     _kv_config: KeyValueConfig
     _setup_semaphore: Semaphore
@@ -73,27 +73,27 @@ class NatsSemaphoreLock:
         self._semaphore = semaphore
 
     async def release(self):
-        kv = await self._semaphore._dispatcher._get_kv()
+        kv = await self._semaphore._context._get_kv()
         await kv.delete(f"{self._name}-{self._slot_no}")
 
 
 class NatsSemaphore:
-    _dispatcher: NatsSemaphoreDispatcher
+    _context: NatsSemaphoreContext
     _name: str
     _slot_count: int
     _slots: set[str]
 
-    def __init__(self, dispatcher: NatsSemaphoreDispatcher, name: str, slot_count: int):
+    def __init__(self, context: NatsSemaphoreContext, name: str, slot_count: int):
         if slot_count < 1:
             raise ValueError("slot_count must be at least 1")
 
-        self._dispatcher = dispatcher
+        self._context = context
         self._name = name
         self._slot_count = slot_count
         self._slots = set([f"{name}-{i}" for i in range(slot_count)])
 
     async def _get_free_slots(self) -> set[str]:
-        kv = await self._dispatcher._get_kv()
+        kv = await self._context._get_kv()
         try:
             keys = await kv.keys()
         except NoKeysError:
@@ -105,7 +105,7 @@ class NatsSemaphore:
         return len(free_slots)
 
     async def acquire(self, timeout: float = _LOCK_TIMEOUT_DEFAULT) -> NatsSemaphoreLock:
-        kv = await self._dispatcher._get_kv()
+        kv = await self._context._get_kv()
 
         status = await kv.status()
         ttl_nanos = status.stream_info.config.max_age
