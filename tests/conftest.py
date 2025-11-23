@@ -18,7 +18,7 @@ def nats_server() -> Generator[str, None, None]:
     if env_var:
         yield env_var
     else:
-        with NatsContainer("nats:latest").with_command("-js") as nats:
+        with NatsContainer("nats:2.7").with_command("-js") as nats:
             yield nats.nats_uri()
 
 
