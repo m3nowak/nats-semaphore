@@ -25,3 +25,14 @@ async def test_container_version(nats_client: NATS, nats_version: str | None):
     actual_version = nats_client.connected_server_version
 
     assert nats_version == f"{actual_version.major}.{actual_version.minor}"
+
+
+@pytest.mark.asyncio
+async def test_python_version(expected_python_version: str | None):
+    import sys
+
+    if expected_python_version is None:
+        pytest.skip("EXPECTED_PYTHON_VERSION not set; skipping version check")
+
+    actual_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    assert expected_python_version == actual_version

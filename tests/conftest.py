@@ -18,6 +18,12 @@ def nats_version() -> str | None:
 
 
 @pytest.fixture(scope="session")
+def expected_python_version() -> str | None:
+    """Provides the expected Python version for testing."""
+    return os.getenv("EXPECTED_PYTHON_VERSION", None)
+
+
+@pytest.fixture(scope="session")
 def nats_server(nats_version: str | None) -> Generator[str, None, None]:
     """Starts a NATS server for testing."""
     env_var = os.getenv("NATS_SERVER_URL")
