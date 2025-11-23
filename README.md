@@ -65,7 +65,18 @@ if __name__ == "__main__":
 ## Requirements
 
 - Python >= 3.10
-- [nats-py](https://github.com/nats-io/nats.py) >= 2.8
+- [nats-py](https://github.com/nats-io/nats.py) >= 2.12
+
+## Compatibility
+
+Compatible with nats-server versions:
+
+- 2.7
+- 2.8
+- 2.9
+- 2.10
+- 2.11
+- 2.12
 
 ## License
 

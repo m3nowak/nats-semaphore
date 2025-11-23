@@ -4,7 +4,6 @@ import pytest
 from nats.aio.client import Client as NATS
 
 
-@pytest.mark.asyncio
 async def test_basic_setup_0(nats_client: NATS):
     from nats_semaphore import NatsSemaphoreContext
 
@@ -231,3 +230,20 @@ async def test_renew_lost_lock(nats_client: NATS):
     # Renew should fail
     with pytest.raises(KeyWrongLastSequenceError):
         await lock.renew()
+
+
+@pytest.mark.asyncio
+async def test_separate_contexts(nats_client: NATS):
+    from nats_semaphore import NatsSemaphoreContext
+
+    context1 = NatsSemaphoreContext(nats_client, kv="TEST_KV_BUCKET")
+    context2 = NatsSemaphoreContext(nats_client, kv="TEST_KV_BUCKET")
+
+    semaphore1 = context1.semaphore(name="test_semaphore", slot_count=1)
+    semaphore2 = context2.semaphore(name="test_semaphore", slot_count=1)
+
+    lock1 = await semaphore1.acquire(timeout=5.0)
+    assert lock1 is not None
+    with pytest.raises(asyncio.TimeoutError):
+        await semaphore2.acquire(timeout=1.0)
+    await lock1.release()

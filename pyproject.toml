@@ -9,6 +9,25 @@ dependencies = ["nats-py<3,>=2.12", "async-timeout>=5.0.1; python_version < '3.1
 requires-python = ">=3.10"
 readme = "README.md"
 license = {text = "Apache-2.0"}
+keywords = ["nats", "semaphore", "distributed", "concurrency", "asyncio", "jetstream"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://github.com/m3nowak/nats-semaphore"
+Repository = "https://github.com/m3nowak/nats-semaphore"
+Issues = "https://github.com/m3nowak/nats-semaphore/issues"
 
 [build-system]
 requires = ["pdm-backend"]
