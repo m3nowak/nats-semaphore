@@ -4,6 +4,7 @@ import pytest
 from nats.aio.client import Client as NATS
 
 
+@pytest.mark.asyncio
 async def test_basic_setup_0(nats_client: NATS):
     from nats_semaphore import NatsSemaphoreContext
 
