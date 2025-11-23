@@ -12,7 +12,7 @@ A distributed semaphore implementation for Python using NATS JetStream KeyValue 
 
 ## Installation
 
-Coming soon(tm)!
+`pip install nats-semaphore`
 
 ## Usage
 
@@ -31,6 +31,13 @@ async def main():
     # 'kv' is the name of the NATS KeyValue bucket to use for storing locks.
     # It will be created if it doesn't exist.
     semaphore_context = NatsSemaphoreContext(nc, kv="SEMAPHORE_BUCKET")
+    # You can also customize the KeyValue options if needed:
+    # from nats.js.api import KeyValueConfig
+    # kvc = KeyValueConfig(
+    #         bucket="SEMAPHORE_BUCKET",
+    #         ttl=1,  # Set a TTL for the keys
+    #     )
+    # semaphore_context = NatsSemaphoreContext(nc, kv=kvc)
 
     # 3. Define a semaphore
     # 'name' identifies the resource.
