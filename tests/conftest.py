@@ -12,13 +12,20 @@ load_dotenv()
 
 
 @pytest.fixture(scope="session")
-def nats_server() -> Generator[str, None, None]:
+def nats_version() -> str | None:
+    """Provides the NATS server version for testing."""
+    return os.getenv("NATS_CONTAINER_VERSION", None)
+
+
+@pytest.fixture(scope="session")
+def nats_server(nats_version: str | None) -> Generator[str, None, None]:
     """Starts a NATS server for testing."""
     env_var = os.getenv("NATS_SERVER_URL")
     if env_var:
         yield env_var
     else:
-        with NatsContainer("nats:2.7").with_command("-js") as nats:
+        version = nats_version if nats_version is not None else "2.7"
+        with NatsContainer(f"docker.io/library/nats:{version}").with_command("-js") as nats:
             yield nats.nats_uri()
 
 
