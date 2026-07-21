@@ -209,6 +209,66 @@ async def test_renew_lock(nats_client: NATS):
 
 
 @pytest.mark.asyncio
+async def test_auto_renew_lock(nats_client: NATS):
+    from nats.js.api import KeyValueConfig
+
+    from nats_semaphore import NatsSemaphoreContext
+
+    kvc = KeyValueConfig(
+        bucket="TEST_KV_BUCKET",
+        ttl=1,
+    )
+
+    context = NatsSemaphoreContext(nats_client, kv=kvc)
+    semaphore = context.semaphore(name="test_semaphore", slot_count=1)
+
+    lock = await semaphore.acquire(timeout=5.0, renew_interval=0.4)
+    assert lock is not None
+
+    await asyncio.sleep(1.3)
+
+    with pytest.raises(asyncio.TimeoutError):
+        await semaphore.acquire(timeout=0.5, renew_interval=0)
+
+    await lock.release()
+
+
+@pytest.mark.asyncio
+async def test_auto_renew_disabled(nats_client: NATS):
+    from nats.js.api import KeyValueConfig
+
+    from nats_semaphore import NatsSemaphoreContext
+
+    kvc = KeyValueConfig(
+        bucket="TEST_KV_BUCKET",
+        ttl=1,
+    )
+
+    context = NatsSemaphoreContext(nats_client, kv=kvc)
+    semaphore = context.semaphore(name="test_semaphore", slot_count=1)
+
+    lock = await semaphore.acquire(timeout=5.0, renew_interval=0)
+    assert lock is not None
+
+    await asyncio.sleep(1.1)
+
+    lock2 = await semaphore.acquire(timeout=5.0, renew_interval=0)
+    assert lock2 is not None
+    await lock2.release()
+
+
+@pytest.mark.asyncio
+async def test_auto_renew_interval_validation(nats_client: NATS):
+    from nats_semaphore import NatsSemaphoreContext
+
+    context = NatsSemaphoreContext(nats_client, kv="TEST_KV_BUCKET")
+    semaphore = context.semaphore(name="test_semaphore", slot_count=1)
+
+    with pytest.raises(ValueError):
+        await semaphore.acquire(renew_interval=-1)
+
+
+@pytest.mark.asyncio
 async def test_renew_lost_lock(nats_client: NATS):
     from nats.js.api import KeyValueConfig
     from nats.js.errors import KeyWrongLastSequenceError
@@ -231,6 +291,44 @@ async def test_renew_lost_lock(nats_client: NATS):
     # Renew should fail
     with pytest.raises(KeyWrongLastSequenceError):
         await lock.renew()
+
+
+@pytest.mark.asyncio
+async def test_auto_renew_lost_lock_release(nats_client: NATS):
+    from nats.js.api import KeyValueConfig
+
+    from nats_semaphore import NatsSemaphoreContext
+
+    kvc = KeyValueConfig(
+        bucket="TEST_KV_BUCKET",
+        ttl=1,
+    )
+
+    context = NatsSemaphoreContext(nats_client, kv=kvc)
+    semaphore = context.semaphore(name="test_semaphore", slot_count=1)
+
+    lock1 = await semaphore.acquire(timeout=5.0, renew_interval=0.4)
+    assert lock1 is not None
+
+    # Manually delete the key to simulate lock loss
+    kv = await context._get_kv()
+    await kv.delete("test_semaphore-0")
+
+    # Wait for auto-renew to fail
+    await asyncio.sleep(0.6)
+
+    # Another lock should now be acquirable
+    lock2 = await semaphore.acquire(timeout=5.0, renew_interval=0)
+    assert lock2 is not None
+
+    # Releasing the lost lock should not delete the current lock
+    await lock1.release()
+
+    # A third lock should fail because lock2 is still held
+    with pytest.raises(asyncio.TimeoutError):
+        await semaphore.acquire(timeout=0.5, renew_interval=0)
+
+    await lock2.release()
 
 
 @pytest.mark.asyncio

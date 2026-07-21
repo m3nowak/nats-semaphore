@@ -1,3 +1,6 @@
+import asyncio
+import contextlib
+import logging
 import sys
 from asyncio import Semaphore, TimeoutError
 from contextlib import asynccontextmanager
@@ -17,8 +20,11 @@ else:
 
 _MAX_BYTES_DEFAULT = 1 * 1024 * 1024  # 1 MB
 _DESCRIPTION_DEFAULT = "Semaphore Bucket"
-_LOCK_TIMEOUT_DEFAULT = 60.0  # seconds
-_LOCK_TTL_DEFAULT = 60.0  # seconds
+_LOCK_TIMEOUT_DEFAULT = 10.0  # seconds
+_LOCK_TTL_DEFAULT = 10.0  # seconds
+_LOCK_RENEW_INTERVAL_DEFAULT = 5.0  # seconds
+
+logger = logging.getLogger(__name__)
 
 
 class NatsSemaphoreContext:
@@ -67,14 +73,47 @@ class NatsSemaphoreLock:
     _slot_no: int
     _semaphore: "NatsSemaphore"
     _revision: int
+    _renew_task: asyncio.Task[None] | None
+    _is_lost: bool
 
-    def __init__(self, name: str, slot_no: int, semaphore: "NatsSemaphore", revision: int):
+    def __init__(
+        self,
+        name: str,
+        slot_no: int,
+        semaphore: "NatsSemaphore",
+        revision: int,
+        renew_interval: float,
+    ):
         self._name = name
         self._slot_no = slot_no
         self._semaphore = semaphore
         self._revision = revision
+        self._renew_task = None
+        self._is_lost = False
+
+        if renew_interval > 0:
+            self._renew_task = asyncio.create_task(self._auto_renew(renew_interval))
+
+    async def _auto_renew(self, renew_interval: float):
+        try:
+            while True:
+                await asyncio.sleep(renew_interval)
+                await self.renew()
+        except KeyWrongLastSequenceError:
+            self._is_lost = True
+        except Exception:
+            logger.exception("Auto-renew failed for lock %s-%s", self._name, self._slot_no)
 
     async def release(self):
+        if self._renew_task is not None:
+            self._renew_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._renew_task
+            self._renew_task = None
+
+        if self._is_lost:
+            return
+
         kv = await self._semaphore._context._get_kv()
         await kv.delete(f"{self._name}-{self._slot_no}")
 
@@ -115,7 +154,14 @@ class NatsSemaphore:
         free_slots = await self._get_free_slots()
         return len(free_slots)
 
-    async def acquire(self, timeout: float = _LOCK_TIMEOUT_DEFAULT) -> NatsSemaphoreLock:
+    async def acquire(
+        self,
+        timeout: float = _LOCK_TIMEOUT_DEFAULT,
+        renew_interval: float = _LOCK_RENEW_INTERVAL_DEFAULT,
+    ) -> NatsSemaphoreLock:
+        if renew_interval < 0:
+            raise ValueError("renew_interval must be greater than or equal to 0")
+
         kv = await self._context._get_kv()
 
         status = await kv.status()
@@ -151,6 +197,7 @@ class NatsSemaphore:
                                 slot_no=int(candidate.split("-")[-1]),
                                 semaphore=self,
                                 revision=revision,
+                                renew_interval=renew_interval,
                             )
                         except KeyWrongLastSequenceError:
                             pass
@@ -181,8 +228,12 @@ class NatsSemaphore:
             raise TimeoutError(f"Timeout while acquiring semaphore '{self._name}'")
 
     @asynccontextmanager
-    async def lock(self, timeout: float = _LOCK_TIMEOUT_DEFAULT) -> AsyncGenerator[NatsSemaphoreLock, None]:
-        lock = await self.acquire(timeout=timeout)
+    async def lock(
+        self,
+        timeout: float = _LOCK_TIMEOUT_DEFAULT,
+        renew_interval: float = _LOCK_RENEW_INTERVAL_DEFAULT,
+    ) -> AsyncGenerator[NatsSemaphoreLock, None]:
+        lock = await self.acquire(timeout=timeout, renew_interval=renew_interval)
         try:
             yield lock
         finally:
