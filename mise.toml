@@ -14,4 +14,29 @@ wait_for = ["pdm-venv"]
 depends = ["pdm-venv", "pdm-install"]
 
 [tasks.test]
-run = "pdm run pytest"
+run = "pytest"
+
+[tasks."formatter:fix"]
+run = "ruff format"
+
+[tasks."formatter:check"]
+run = "ruff format --check"
+
+[tasks."linter:fix"]
+run = "ruff check --fix"
+
+[tasks."linter:check"]
+run = "ruff check"
+
+[tasks."typing:check"]
+run = "pyright src tests"
+
+[tasks.fix]
+run = [{ task = "linter:fix" }, { task = "formatter:fix" }]
+
+[tasks.check]
+depends = ["formatter:check", "linter:check", "typing:check"]
+
+
+[env]
+_.python.venv = ".venv"
