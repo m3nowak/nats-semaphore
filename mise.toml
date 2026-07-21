@@ -1,0 +1,42 @@
+[tools]
+pdm = "2"
+python = "3.10"
+
+[tasks.pdm-venv]
+run = "test -d .venv || pdm venv create {{tools.python.path}}"
+run_windows = "if not exist .venv\\NUL pdm venv create {{tools.python.path}}"
+
+[tasks.pdm-install]
+run = "pdm install"
+wait_for = ["pdm-venv"]
+
+[tasks.setup]
+depends = ["pdm-venv", "pdm-install"]
+
+[tasks.test]
+run = "pytest"
+
+[tasks."formatter:fix"]
+run = "ruff format"
+
+[tasks."formatter:check"]
+run = "ruff format --check"
+
+[tasks."linter:fix"]
+run = "ruff check --fix"
+
+[tasks."linter:check"]
+run = "ruff check"
+
+[tasks."typing:check"]
+run = "pyright src tests"
+
+[tasks.fix]
+run = [{ task = "linter:fix" }, { task = "formatter:fix" }]
+
+[tasks.check]
+depends = ["formatter:check", "linter:check", "typing:check"]
+
+
+[env]
+_.python.venv = ".venv"

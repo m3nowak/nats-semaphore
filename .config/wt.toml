@@ -1,0 +1,8 @@
+[[pre-start]]
+copy-ignored = "wt step copy-ignored"
+
+[[pre-start]]
+install = "mise install"
+
+[[pre-start]]
+setup = "mise r setup"
