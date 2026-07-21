@@ -9,10 +9,11 @@ A distributed semaphore implementation for Python using NATS JetStream KeyValue 
 - **Asyncio Support**: Built from the ground up for Python's `asyncio`.
 - **Context Manager**: Easy-to-use `async with` syntax for automatic lock acquisition and release.
 - **Timeout Handling**: Support for acquisition timeouts.
+- **Automatic Renewal**: Locks are renewed periodically while held, so the default 10 second KV TTL does not expire during longer work.
 
 ## Installation
 
-Coming soon(tm)!
+`pip install nats-semaphore`
 
 ## Usage
 
@@ -31,6 +32,13 @@ async def main():
     # 'kv' is the name of the NATS KeyValue bucket to use for storing locks.
     # It will be created if it doesn't exist.
     semaphore_context = NatsSemaphoreContext(nc, kv="SEMAPHORE_BUCKET")
+    # You can also customize the KeyValue options if needed:
+    # from nats.js.api import KeyValueConfig
+    # kvc = KeyValueConfig(
+    #         bucket="SEMAPHORE_BUCKET",
+    #         ttl=1,  # Set a TTL for the keys
+    #     )
+    # semaphore_context = NatsSemaphoreContext(nc, kv=kvc)
 
     # 3. Define a semaphore
     # 'name' identifies the resource.
@@ -39,7 +47,8 @@ async def main():
 
     # 4. Acquire a lock using a context manager
     try:
-        # Try to acquire a lock, waiting up to 5 seconds
+        # Try to acquire a lock, waiting up to 5 seconds.
+        # By default, the lock is renewed every 5 seconds.
         async with semaphore.lock(timeout=5.0) as lock:
             print("Lock acquired! Doing work...")
             await asyncio.sleep(1)
@@ -56,11 +65,17 @@ async def main():
         await lock.release()
         print("Manually released lock.")
 
+    # Disable automatic renewal by setting renew_interval to 0.
+    lock = await semaphore.acquire(timeout=5.0, renew_interval=0)
+    await lock.release()
+
     await nc.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
+
+By default, the KeyValue bucket created from a string name uses a 10 second TTL for lock entries. Acquired locks are renewed every 5 seconds unless `renew_interval=0` is passed to `acquire()` or `lock()`.
 
 ## Requirements
 
