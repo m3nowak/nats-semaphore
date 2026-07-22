@@ -92,6 +92,7 @@ Compatible with nats-server versions:
 - 2.10
 - 2.11
 - 2.12
+- 2.14
 
 ## License
 
