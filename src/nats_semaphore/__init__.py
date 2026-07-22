@@ -1,16 +1,19 @@
 import asyncio
 import contextlib
 import logging
+import re
 import sys
+import warnings
 from asyncio import Semaphore, TimeoutError
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 from nats.aio.client import Client as NATS
 from nats.js import JetStreamContext
-from nats.js.api import KeyValueConfig
-from nats.js.errors import BucketNotFoundError, KeyWrongLastSequenceError, NoKeysError
+from nats.js.api import KeyValueConfig, StorageType
+from nats.js.errors import APIError, BucketNotFoundError, KeyWrongLastSequenceError, NoKeysError
 from nats.js.kv import KeyValue
 
 if sys.version_info >= (3, 11):
@@ -23,41 +26,106 @@ _DESCRIPTION_DEFAULT = "Semaphore Bucket"
 _LOCK_TIMEOUT_DEFAULT = 10.0  # seconds
 _LOCK_TTL_DEFAULT = 10.0  # seconds
 _LOCK_RENEW_INTERVAL_DEFAULT = 5.0  # seconds
+_WRONG_LAST_SEQUENCE_ERROR = 10071
+_VALID_BUCKET_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True, slots=True)
+class SemaphoreBucketConfig:
+    bucket: str = "SEMAPHORES"
+    description: str = _DESCRIPTION_DEFAULT
+    ttl: float | None = _LOCK_TTL_DEFAULT
+    max_bytes: int = _MAX_BYTES_DEFAULT
+    storage: StorageType = StorageType.MEMORY
+    replicas: int = 1
+
+    def __post_init__(self):
+        if _VALID_BUCKET_RE.fullmatch(self.bucket) is None:
+            raise ValueError("bucket must contain only letters, digits, underscores, or hyphens")
+        if self.ttl is not None and self.ttl < 0:
+            raise ValueError("ttl must be greater than or equal to 0")
+        if self.max_bytes <= 0:
+            raise ValueError("max_bytes must be greater than 0")
+        if self.replicas < 1:
+            raise ValueError("replicas must be at least 1")
+        if not isinstance(self.storage, StorageType):
+            raise ValueError("storage must be a StorageType")
+
+
+class SemaphoreBucketConfigMismatchWarning(UserWarning):
+    """Requested semaphore bucket settings differ from the effective settings."""
+
+
 class NatsSemaphoreContext:
     _js_ctx: JetStreamContext
-    _kv_config: KeyValueConfig
+    _bucket: str | SemaphoreBucketConfig
     _setup_semaphore: Semaphore
     _kv: KeyValue | None
 
-    def __init__(self, js_manager: NATS | JetStreamContext, kv: str | KeyValueConfig):
+    def __init__(self, js_manager: NATS | JetStreamContext, bucket: str | SemaphoreBucketConfig):
         if isinstance(js_manager, NATS):
             js_manager = js_manager.jetstream()
 
         self._js_ctx = js_manager
-
-        if isinstance(kv, str):
-            kv = KeyValueConfig(
-                bucket=kv,
-                max_bytes=_MAX_BYTES_DEFAULT,
-                description=_DESCRIPTION_DEFAULT,
-                ttl=_LOCK_TTL_DEFAULT,
-            )
-
-        self._kv_config = kv
+        self._bucket = bucket
         self._setup_semaphore = Semaphore(1)
         self._kv = None
 
     async def _ensure_bucket(self):
         if self._kv is None:
             async with self._setup_semaphore:
+                if self._kv is not None:
+                    return
+
+                if isinstance(self._bucket, str):
+                    self._kv = await self._js_ctx.key_value(self._bucket)
+                    return
+
                 try:
-                    self._kv = await self._js_ctx.key_value(self._kv_config.bucket)
+                    self._kv = await self._js_ctx.key_value(self._bucket.bucket)
                 except BucketNotFoundError:
-                    self._kv = await self._js_ctx.create_key_value(self._kv_config)
+                    config = KeyValueConfig(
+                        bucket=self._bucket.bucket,
+                        description=self._bucket.description,
+                        ttl=self._bucket.ttl,
+                        max_bytes=self._bucket.max_bytes,
+                        storage=self._bucket.storage,
+                        replicas=self._bucket.replicas,
+                        history=1,
+                    )
+                    try:
+                        self._kv = await self._js_ctx.create_key_value(config)
+                    except Exception as provisioning_error:
+                        try:
+                            self._kv = await self._js_ctx.key_value(self._bucket.bucket)
+                        except Exception:
+                            raise provisioning_error
+
+                await self._warn_on_config_mismatch(self._kv, self._bucket)
+
+    async def _warn_on_config_mismatch(self, kv: KeyValue, requested: SemaphoreBucketConfig):
+        stream_config = (await kv.status()).stream_info.config
+        requested_ttl = requested.ttl or 0
+        effective_ttl = stream_config.max_age or 0
+        fields = {
+            "ttl": (requested_ttl, effective_ttl),
+            "max_bytes": (requested.max_bytes, stream_config.max_bytes),
+            "storage": (requested.storage, stream_config.storage),
+            "replicas": (requested.replicas, stream_config.num_replicas),
+        }
+        differences = [
+            f"{field}(requested={requested_value!r}, effective={effective_value!r})"
+            for field, (requested_value, effective_value) in fields.items()
+            if requested_value != effective_value
+        ]
+        if differences:
+            warnings.warn(
+                f"Semaphore bucket {requested.bucket!r} configuration differs: {', '.join(differences)}",
+                SemaphoreBucketConfigMismatchWarning,
+                stacklevel=5,
+            )
 
     async def _get_kv(self) -> KeyValue:
         await self._ensure_bucket()
@@ -115,7 +183,12 @@ class NatsSemaphoreLock:
             return
 
         kv = await self._semaphore._context._get_kv()
-        await kv.delete(f"{self._name}-{self._slot_no}")
+        try:
+            await kv.delete(f"{self._name}-{self._slot_no}", last=self._revision)
+        except APIError as error:
+            if error.err_code != _WRONG_LAST_SEQUENCE_ERROR:
+                raise
+            self._is_lost = True
 
     async def renew(self):
         kv = await self._semaphore._context._get_kv()
@@ -165,10 +238,10 @@ class NatsSemaphore:
         kv = await self._context._get_kv()
 
         status = await kv.status()
-        ttl_nanos = status.stream_info.config.max_age
-        if ttl_nanos is None:
-            ttl_nanos = 0
-        ttl_seconds = ttl_nanos / 1e9 if ttl_nanos > 0 else float("inf")
+        effective_ttl = status.stream_info.config.max_age or 0
+        ttl_seconds = effective_ttl if effective_ttl > 0 else float("inf")
+        if renew_interval > 0 and renew_interval >= ttl_seconds:
+            raise ValueError("renew_interval must be shorter than the semaphore bucket TTL")
 
         watcher = await kv.watchall()
         taken_slots: dict[str, float] = {}
