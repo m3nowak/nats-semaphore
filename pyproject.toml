@@ -1,6 +1,6 @@
 [project]
 name = "nats-semaphore"
-version = "0.0.2"
+version = "0.0.3"
 description = "Distributed semaphore utility based on NATS JetStream key-value stores."
 authors = [
     {name = "Mikołaj Nowak", email = "12396461+m3nowak@users.noreply.github.com"},
@@ -76,4 +76,3 @@ dev = [
 filterwarnings = [
     "ignore:::testcontainers.*",
 ]
-

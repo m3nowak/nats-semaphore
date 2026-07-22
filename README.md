@@ -22,23 +22,18 @@ Here is a simple example of how to use `nats-semaphore`:
 ```python
 import asyncio
 import nats
-from nats_semaphore import NatsSemaphoreContext
+from nats_semaphore import NatsSemaphoreContext, SemaphoreBucketConfig
 
 async def main():
     # 1. Connect to NATS
     nc = await nats.connect("nats://localhost:4222")
 
-    # 2. Initialize the context
-    # 'kv' is the name of the NATS KeyValue bucket to use for storing locks.
-    # It will be created if it doesn't exist.
-    semaphore_context = NatsSemaphoreContext(nc, kv="SEMAPHORE_BUCKET")
-    # You can also customize the KeyValue options if needed:
-    # from nats.js.api import KeyValueConfig
-    # kvc = KeyValueConfig(
-    #         bucket="SEMAPHORE_BUCKET",
-    #         ttl=1,  # Set a TTL for the keys
-    #     )
-    # semaphore_context = NatsSemaphoreContext(nc, kv=kvc)
+    # 2. Explicitly opt into lazy create-or-bind provisioning.
+    semaphore_context = NatsSemaphoreContext(nc, bucket=SemaphoreBucketConfig())
+
+    # To bind only to infrastructure provisioned elsewhere, pass its bucket name.
+    # This raises BucketNotFoundError on first use if the bucket does not exist.
+    # semaphore_context = NatsSemaphoreContext(nc, bucket="SEMAPHORES")
 
     # 3. Define a semaphore
     # 'name' identifies the resource.
@@ -75,7 +70,29 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-By default, the KeyValue bucket created from a string name uses a 10 second TTL for lock entries. Acquired locks are renewed every 5 seconds unless `renew_interval=0` is passed to `acquire()` or `lock()`.
+`SemaphoreBucketConfig()` provisions the `SEMAPHORES` bucket lazily with a 10 second TTL, a 1 MiB limit, memory storage, and one replica. Acquired locks are renewed every 5 seconds unless `renew_interval=0` is passed to `acquire()` or `lock()`.
+
+Custom provisioning remains semaphore-specific:
+
+```python
+from nats.js.api import StorageType
+from nats_semaphore import NatsSemaphoreContext, SemaphoreBucketConfig
+
+context = NatsSemaphoreContext(
+    nc,
+    bucket=SemaphoreBucketConfig(
+        bucket="MY_SEMAPHORES",
+        ttl=30,
+        max_bytes=2 * 1024 * 1024,
+        storage=StorageType.FILE,
+        replicas=3,
+    ),
+)
+```
+
+## Migrating To 0.0.3
+
+The context API intentionally no longer accepts `kv=` or native NATS `KeyValueConfig` values. Replace create-or-bind calls with `bucket=SemaphoreBucketConfig(...)`. Replace `kv="NAME"` with `bucket="NAME"` only when the bucket is provisioned externally and should be bind-only.
 
 ## Requirements
 
