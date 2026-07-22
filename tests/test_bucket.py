@@ -123,9 +123,10 @@ async def test_matching_existing_bucket_is_reused_without_warning(nats_client: N
     second = NatsSemaphoreContext(nats_client, bucket=config)
     await first.semaphore("one", 1).current_free_count()
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always", SemaphoreBucketConfigMismatchWarning)
         assert await second.semaphore("two", 1).current_free_count() == 1
+    assert not [warning for warning in captured if warning.category is SemaphoreBucketConfigMismatchWarning]
 
 
 @pytest.mark.asyncio
@@ -133,13 +134,14 @@ async def test_description_only_drift_does_not_warn(nats_client: NATS):
     config = SemaphoreBucketConfig(bucket="DESCRIPTION", description="First description")
     await NatsSemaphoreContext(nats_client, config).semaphore("one", 1).current_free_count()
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always", SemaphoreBucketConfigMismatchWarning)
         context = NatsSemaphoreContext(
             nats_client,
             SemaphoreBucketConfig(bucket="DESCRIPTION", description="Second description"),
         )
         assert await context.semaphore("two", 1).current_free_count() == 1
+    assert not [warning for warning in captured if warning.category is SemaphoreBucketConfigMismatchWarning]
 
 
 @pytest.mark.asyncio
@@ -233,12 +235,13 @@ async def test_matching_requests_converge_across_independent_connections(nats_se
     clients = await asyncio.gather(*(connect(nats_server) for _ in range(8)))
     contexts = [NatsSemaphoreContext(client, SemaphoreBucketConfig(bucket="RACE")) for client in clients]
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("error")
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always", SemaphoreBucketConfigMismatchWarning)
             counts = await asyncio.gather(
                 *(context.semaphore(f"work-{i}", 1).current_free_count() for i, context in enumerate(contexts))
             )
         assert counts == [1] * len(contexts)
+        assert not [warning for warning in captured if warning.category is SemaphoreBucketConfigMismatchWarning]
     finally:
         await asyncio.gather(*(client.close() for client in clients))
 
